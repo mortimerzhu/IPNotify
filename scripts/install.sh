@@ -81,21 +81,64 @@ Cross-compile elsewhere and re-run, e.g.:
   IPNOTIFY_BINARY=./ipnotify ./scripts/install.sh"
 fi
 
+# ---------- seed defaults from an existing config ----------
+# On re-install, reuse the previous answers as prompt defaults (press Enter to
+# keep) so the same details don't have to be retyped. Precedence for each
+# setting: explicit env var > existing config value > hard-coded default.
+# Parser is deliberately minimal: it only understands the fixed shape this
+# installer emits (env-var presets or a hand-edited config still override it).
+read_existing_config() {
+  CFG_LOCAL_ENABLED=""; CFG_LOCAL_INTERVAL=""; CFG_PUBLIC_ENABLED=""; CFG_PUBLIC_INTERVAL=""
+  CFG_GATEWAY_ENABLED=""; CFG_GATEWAY_LISTEN=""; CFG_NOTIFIERS=""; CFG_NOTIFIER_COUNT=0
+  [ -f "$CONFIG_PATH" ] || return 0
+
+  # Scalar watcher/gateway settings. `top`/`sub2` track the section so the two
+  # enabled:/interval: keys under watch.local vs watch.public don't collide.
+  eval "$(awk '
+    function val(s){ sub(/^[^:]*:[ \t]*/,"",s); sub(/[ \t]+#.*$/,"",s); sub(/[ \t]+$/,"",s); gsub(/^"|"$/,"",s); return s }
+    /^[^ \t#]/ {
+      line=$0; sub(/[ \t]+$/,"",line)
+      if (line ~ /^watch:/) top="watch"; else if (line ~ /^gateway:/) top="gateway"; else top=""
+      sub2=""; next
+    }
+    top=="watch" && /^[ \t]+local:/  { sub2="local";  next }
+    top=="watch" && /^[ \t]+public:/ { sub2="public"; next }
+    top=="watch" && /^[ \t]+enabled:/ { v=(val($0)=="true")?"y":"n"
+      if (sub2=="local")  print "CFG_LOCAL_ENABLED=\"" v "\""
+      if (sub2=="public") print "CFG_PUBLIC_ENABLED=\"" v "\""; next }
+    top=="watch" && /^[ \t]+interval:/ { v=val($0)
+      if (sub2=="local")  print "CFG_LOCAL_INTERVAL=\"" v "\""
+      if (sub2=="public") print "CFG_PUBLIC_INTERVAL=\"" v "\""; next }
+    top=="gateway" && /^[ \t]+enabled:/ { v=(val($0)=="true")?"y":"n"; print "CFG_GATEWAY_ENABLED=\"" v "\""; next }
+    top=="gateway" && /^[ \t]+listen:/  { print "CFG_GATEWAY_LISTEN=\"" val($0) "\""; next }
+  ' "$CONFIG_PATH")"
+
+  # Notifiers block verbatim (line after `notifiers:` to the next top-level key
+  # or EOF), with leading blank lines trimmed. Lets a re-install keep webhook
+  # URLs / secrets / tokens without re-typing them.
+  CFG_NOTIFIERS=$(awk '/^notifiers:/{inb=1;next} inb && /^[^ \t#]/{inb=0} inb{print}' "$CONFIG_PATH" | sed -e '/./,$!d')
+  CFG_NOTIFIER_COUNT=$(printf '%s\n' "$CFG_NOTIFIERS" | grep -c '^[[:space:]]*-[[:space:]]*type:' || true)
+}
+read_existing_config
+if [ -n "$CFG_LOCAL_ENABLED$CFG_PUBLIC_ENABLED$CFG_GATEWAY_LISTEN$CFG_NOTIFIERS" ]; then
+  info "Found existing config — using its values as defaults (press Enter to keep)"
+fi
+
 # ---------- interactive config ----------
 info "Configure watchers"
-ask_yn "Enable local (LAN) IP watcher?" "${LOCAL_ENABLED:-y}" LOCAL_ENABLED
-LOCAL_INTERVAL="${LOCAL_INTERVAL:-10}"
+ask_yn "Enable local (LAN) IP watcher?" "${LOCAL_ENABLED:-${CFG_LOCAL_ENABLED:-y}}" LOCAL_ENABLED
+LOCAL_INTERVAL="${LOCAL_INTERVAL:-${CFG_LOCAL_INTERVAL:-10}}"
 [ "$LOCAL_ENABLED" = "y" ] && ask "  local poll interval (seconds)" "$LOCAL_INTERVAL" LOCAL_INTERVAL
 
-ask_yn "Enable public (egress) IP watcher?" "${PUBLIC_ENABLED:-y}" PUBLIC_ENABLED
-PUBLIC_INTERVAL="${PUBLIC_INTERVAL:-60}"
+ask_yn "Enable public (egress) IP watcher?" "${PUBLIC_ENABLED:-${CFG_PUBLIC_ENABLED:-y}}" PUBLIC_ENABLED
+PUBLIC_INTERVAL="${PUBLIC_INTERVAL:-${CFG_PUBLIC_INTERVAL:-60}}"
 [ "$PUBLIC_ENABLED" = "y" ] && ask "  public poll interval (seconds)" "$PUBLIC_INTERVAL" PUBLIC_INTERVAL
 
 [ "$LOCAL_ENABLED" = "y" ] || [ "$PUBLIC_ENABLED" = "y" ] || err "at least one watcher must be enabled"
 
 info "Configure gateway (HTTP status/control API)"
-ask_yn "Enable gateway?" "${GATEWAY_ENABLED:-y}" GATEWAY_ENABLED
-GATEWAY_LISTEN="${GATEWAY_LISTEN:-127.0.0.1:8555}"
+ask_yn "Enable gateway?" "${GATEWAY_ENABLED:-${CFG_GATEWAY_ENABLED:-y}}" GATEWAY_ENABLED
+GATEWAY_LISTEN="${GATEWAY_LISTEN:-${CFG_GATEWAY_LISTEN:-127.0.0.1:8555}}"
 [ "$GATEWAY_ENABLED" = "y" ] && ask "  gateway listen address" "$GATEWAY_LISTEN" GATEWAY_LISTEN
 
 NOTIFIERS=""
@@ -146,13 +189,21 @@ add_notifier() {
   esac
 }
 
-info "Add at least one notifier"
-add_notifier
-while : ; do
-  ask_yn "Add another notifier?" "n" MORE
-  [ "$MORE" = "y" ] || break
+KEEP_NOTIFIERS=n
+[ -n "$CFG_NOTIFIERS" ] && ask_yn "Keep the $CFG_NOTIFIER_COUNT existing notifier(s)?" "y" KEEP_NOTIFIERS
+if [ "$KEEP_NOTIFIERS" = "y" ]; then
+  # Reuse the previous notifiers block verbatim (leading newline matches the
+  # format add_notifier builds, so the writer below emits valid YAML).
+  NOTIFIERS=$(printf '\n%s' "$CFG_NOTIFIERS")
+else
+  info "Add at least one notifier"
   add_notifier
-done
+  while : ; do
+    ask_yn "Add another notifier?" "n" MORE
+    [ "$MORE" = "y" ] || break
+    add_notifier
+  done
+fi
 [ -n "$NOTIFIERS" ] || err "no notifiers configured"
 
 # ---------- write config (interval only when the watcher is enabled) ----------
@@ -187,6 +238,11 @@ info "Validating config"
 $SVC "$BIN_DIR/ipnotify" validate -c "$CONFIG_PATH" || err "config validation failed; not installing service"
 
 info "Installing and starting service"
+# Make re-install idempotent: clear any previous install first (no-op on a
+# fresh machine). Otherwise `service install` fails when the LaunchAgent/unit
+# already exists ("Init already exists: ...ipnotify.plist").
+$SVC "$BIN_DIR/ipnotify" service stop      -c "$CONFIG_PATH" >/dev/null 2>&1 || true
+$SVC "$BIN_DIR/ipnotify" service uninstall -c "$CONFIG_PATH" >/dev/null 2>&1 || true
 $SVC "$BIN_DIR/ipnotify" service install -c "$CONFIG_PATH" || err "service install failed"
 $SVC "$BIN_DIR/ipnotify" service start   -c "$CONFIG_PATH" || err "service start failed"
 

@@ -186,10 +186,29 @@ When `gateway.enabled: true`, IPNotify serves a small control API (default
 | POST   | `/test`    | Send a test notification to all notifiers           |
 | POST   | `/reload`  | Reload notifiers from the config file               |
 
+**Linux / macOS (bash) or Windows `cmd.exe`** — `curl` is the real curl:
+
 ```bash
-curl http://127.0.0.1:8555/status
-curl -XPOST http://127.0.0.1:8555/test
+curl http://127.0.0.1:8555/status          # GET
+curl -X POST http://127.0.0.1:8555/test    # POST — send a test notification
+curl -X POST http://127.0.0.1:8555/reload  # POST — reload notifiers
 ```
+
+**Windows PowerShell** — bare `curl` is an alias for `Invoke-WebRequest` (defaults to
+GET and does not accept curl flags like `-X`), so use `curl.exe` or the native cmdlet:
+
+```powershell
+# real curl (note the .exe)
+curl.exe http://127.0.0.1:8555/status
+curl.exe -X POST http://127.0.0.1:8555/test
+
+# or the native PowerShell cmdlet (auto-parses JSON)
+Invoke-RestMethod http://127.0.0.1:8555/status
+Invoke-RestMethod -Method POST http://127.0.0.1:8555/test
+```
+
+> GET endpoints (`/healthz`, `/status`) work with a plain browser or GET request.
+> `/test`, `/reload` are **POST-only** — a GET returns `405 method not allowed`.
 
 > `/reload` hot-swaps the notifier set only; changing watcher intervals or the
 > gateway listen address requires `ipnotify service restart`.
