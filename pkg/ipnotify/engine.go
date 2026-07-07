@@ -6,9 +6,7 @@ package ipnotify
 import (
 	"context"
 	"log/slog"
-	"net"
 	"os"
-	"sort"
 	"sync"
 	"time"
 
@@ -180,20 +178,22 @@ func (e *Engine) snapshotNotifiers() []notifier.Notifier {
 // results. Used by `ipnotify test` and the gateway /test endpoint.
 func (e *Engine) TestAll(ctx context.Context) []TestResult {
 	host, _ := os.Hostname()
-	localIPs := currentLocalIPs()
+	// The test notification reflects exactly which watchers are enabled: a
+	// provider is only wired for a watcher that is turned on (see app.Run), so a
+	// nil provider means that watcher is off and its IPs are omitted.
+	var localIPs, publicIPs []string
 	if e.localIPsFn != nil {
 		localIPs = e.localIPsFn()
 	}
-	var publicIPs []string
 	if e.publicIPsFn != nil {
 		publicIPs = e.publicIPsFn()
-	}
-	if len(publicIPs) == 0 {
-		// Fall back to the last observed public IP if the live lookup returned
-		// nothing (e.g. public watching disabled, or all sources unreachable).
-		e.mu.RLock()
-		publicIPs = append([]string(nil), e.state.Public...)
-		e.mu.RUnlock()
+		if len(publicIPs) == 0 {
+			// WAN watching is on but the live lookup returned nothing (all
+			// sources unreachable) — fall back to the last observed public IP.
+			e.mu.RLock()
+			publicIPs = append([]string(nil), e.state.Public...)
+			e.mu.RUnlock()
+		}
 	}
 	combined := append(append([]string(nil), localIPs...), publicIPs...)
 	ev := event.Event{
@@ -224,33 +224,6 @@ func (e *Engine) TestAll(ctx context.Context) []TestResult {
 	}
 	wg.Wait()
 	return results
-}
-
-// currentLocalIPs is the default fallback used when no WithLocalIPs provider is
-// set. It mirrors the watcher's default filter: drop loopback, link-local, and
-// IPv6 unique-local (fc00::/7) addresses.
-func currentLocalIPs() []string {
-	var out []string
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return out
-	}
-	for _, a := range addrs {
-		ipnet, ok := a.(*net.IPNet)
-		if !ok {
-			continue
-		}
-		ip := ipnet.IP
-		if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-			continue
-		}
-		if ip16 := ip.To16(); ip16 != nil && ip.To4() == nil && ip16[0]&0xfe == 0xfc {
-			continue // IPv6 ULA
-		}
-		out = append(out, ip.String())
-	}
-	sort.Strings(out)
-	return out
 }
 
 func (e *Engine) recordChange(ev event.Event) {

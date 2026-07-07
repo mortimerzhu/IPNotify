@@ -81,3 +81,33 @@ func TestTestAllIncludesLocalAndPublic(t *testing.T) {
 		t.Error("test event should be marked Test")
 	}
 }
+
+func TestTestAllLocalOnlyOmitsPublic(t *testing.T) {
+	cap := &captureNotifier{name: "cap"}
+	// Only the local provider is wired (mirrors local-only config).
+	eng := New(nil, []notifier.Notifier{cap},
+		WithLocalIPs(func() []string { return []string{"192.168.1.102"} }),
+	)
+	eng.TestAll(context.Background())
+	if len(cap.last.LocalIPs) == 0 {
+		t.Error("local-only test should include local IPs")
+	}
+	if len(cap.last.PublicIPs) != 0 {
+		t.Errorf("local-only test should omit WAN IPs, got %v", cap.last.PublicIPs)
+	}
+}
+
+func TestTestAllPublicOnlyOmitsLocal(t *testing.T) {
+	cap := &captureNotifier{name: "cap"}
+	// Only the public provider is wired (mirrors WAN-only config).
+	eng := New(nil, []notifier.Notifier{cap},
+		WithPublicIPs(func() []string { return []string{"1.2.3.4"} }),
+	)
+	eng.TestAll(context.Background())
+	if len(cap.last.PublicIPs) == 0 {
+		t.Error("WAN-only test should include WAN IPs")
+	}
+	if len(cap.last.LocalIPs) != 0 {
+		t.Errorf("WAN-only test should omit local IPs, got %v", cap.last.LocalIPs)
+	}
+}

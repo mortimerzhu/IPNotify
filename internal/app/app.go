@@ -71,10 +71,13 @@ func Run(ctx context.Context, configPath string, log *slog.Logger) error {
 		return err
 	}
 	watchers := BuildWatchers(cfg)
-	lc := localConfig(cfg)
-	opts := []ipnotify.Option{
-		ipnotify.WithLogger(log),
-		ipnotify.WithLocalIPs(func() []string { return local.CurrentIPs(lc) }),
+	// Wire a test-notification IP provider for each ENABLED watcher only, so
+	// `ipnotify test` / the gateway /test endpoint reflects exactly what was
+	// enabled at install time (local only, WAN only, or both).
+	opts := []ipnotify.Option{ipnotify.WithLogger(log)}
+	if cfg.Watch.Local.Enabled {
+		lc := localConfig(cfg)
+		opts = append(opts, ipnotify.WithLocalIPs(func() []string { return local.CurrentIPs(lc) }))
 	}
 	if cfg.Watch.Public.Enabled {
 		sources := cfg.Watch.Public.Sources
