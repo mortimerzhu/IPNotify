@@ -71,22 +71,7 @@ func Run(ctx context.Context, configPath string, log *slog.Logger) error {
 		return err
 	}
 	watchers := BuildWatchers(cfg)
-	// Wire a test-notification IP provider for each ENABLED watcher only, so
-	// `ipnotify test` / the gateway /test endpoint reflects exactly what was
-	// enabled at install time (local only, WAN only, or both).
-	opts := []ipnotify.Option{ipnotify.WithLogger(log)}
-	if cfg.Watch.Local.Enabled {
-		lc := localConfig(cfg)
-		opts = append(opts, ipnotify.WithLocalIPs(func() []string { return local.CurrentIPs(lc) }))
-	}
-	if cfg.Watch.Public.Enabled {
-		sources := cfg.Watch.Public.Sources
-		opts = append(opts, ipnotify.WithPublicIPs(func() []string {
-			ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
-			defer cancel()
-			return public.CurrentIP(ctx, sources)
-		}))
-	}
+	opts := append([]ipnotify.Option{ipnotify.WithLogger(log)}, ipProviderOptions(cfg)...)
 	engine := ipnotify.New(watchers, notifiers, opts...)
 	log.Info("ipnotify starting",
 		"watchers", len(watchers), "notifiers", len(notifiers), "gateway", cfg.Gateway.Enabled)
@@ -137,11 +122,29 @@ func RunTest(ctx context.Context, configPath string, log *slog.Logger) ([]ipnoti
 	if err != nil {
 		return nil, err
 	}
-	lc := localConfig(cfg)
-	engine := ipnotify.New(nil, notifiers,
-		ipnotify.WithLogger(log),
-		ipnotify.WithLocalIPs(func() []string { return local.CurrentIPs(lc) }))
+	opts := append([]ipnotify.Option{ipnotify.WithLogger(log)}, ipProviderOptions(cfg)...)
+	engine := ipnotify.New(nil, notifiers, opts...)
 	return engine.TestAll(ctx), nil
+}
+
+// ipProviderOptions wires a test-notification IP provider for each ENABLED
+// watcher only, so `ipnotify test` (RunTest) and the gateway /test endpoint
+// (Run) return the same, config-accurate result: local only, WAN only, or both.
+func ipProviderOptions(cfg *config.Config) []ipnotify.Option {
+	var opts []ipnotify.Option
+	if cfg.Watch.Local.Enabled {
+		lc := localConfig(cfg)
+		opts = append(opts, ipnotify.WithLocalIPs(func() []string { return local.CurrentIPs(lc) }))
+	}
+	if cfg.Watch.Public.Enabled {
+		sources := cfg.Watch.Public.Sources
+		opts = append(opts, ipnotify.WithPublicIPs(func() []string {
+			ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+			defer cancel()
+			return public.CurrentIP(ctx, sources)
+		}))
+	}
+	return opts
 }
 
 // program implements service.Interface for kardianos/service.
