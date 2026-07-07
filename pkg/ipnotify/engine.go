@@ -34,6 +34,10 @@ type Engine struct {
 	// localIPsFn, if set, supplies the current local IPs for the test
 	// notification (so it honors the watcher's address filter).
 	localIPsFn func() []string
+	// publicIPsFn, if set, supplies the current public (WAN) IP for the test
+	// notification via a live lookup (so it doesn't depend on the first poll
+	// having happened yet).
+	publicIPsFn func() []string
 }
 
 // State is a point-in-time snapshot of what the engine has observed. It is
@@ -69,6 +73,11 @@ func WithLogger(l *slog.Logger) Option { return func(e *Engine) { e.log = l } }
 // WithLocalIPs sets a provider for the current local IPs shown in the test
 // notification, so it reflects the same address filter as the watcher.
 func WithLocalIPs(fn func() []string) Option { return func(e *Engine) { e.localIPsFn = fn } }
+
+// WithPublicIPs sets a provider for the current public (WAN) IP shown in the
+// test notification. When unset, the test falls back to the last observed
+// public IP (which is empty until the public watcher's first poll).
+func WithPublicIPs(fn func() []string) Option { return func(e *Engine) { e.publicIPsFn = fn } }
 
 // New builds an Engine.
 func New(watchers []watcher.Watcher, notifiers []notifier.Notifier, opts ...Option) *Engine {
@@ -171,16 +180,30 @@ func (e *Engine) snapshotNotifiers() []notifier.Notifier {
 // results. Used by `ipnotify test` and the gateway /test endpoint.
 func (e *Engine) TestAll(ctx context.Context) []TestResult {
 	host, _ := os.Hostname()
-	ips := currentLocalIPs()
+	localIPs := currentLocalIPs()
 	if e.localIPsFn != nil {
-		ips = e.localIPsFn()
+		localIPs = e.localIPsFn()
 	}
+	var publicIPs []string
+	if e.publicIPsFn != nil {
+		publicIPs = e.publicIPsFn()
+	}
+	if len(publicIPs) == 0 {
+		// Fall back to the last observed public IP if the live lookup returned
+		// nothing (e.g. public watching disabled, or all sources unreachable).
+		e.mu.RLock()
+		publicIPs = append([]string(nil), e.state.Public...)
+		e.mu.RUnlock()
+	}
+	combined := append(append([]string(nil), localIPs...), publicIPs...)
 	ev := event.Event{
-		Kind:     event.KindLocal,
-		Test:     true,
-		New:      ips,
-		Hostname: host,
-		Time:     time.Now(),
+		Kind:      event.KindLocal,
+		Test:      true,
+		New:       combined,
+		LocalIPs:  localIPs,
+		PublicIPs: publicIPs,
+		Hostname:  host,
+		Time:      time.Now(),
 	}
 	ns := e.snapshotNotifiers()
 	results := make([]TestResult, len(ns))

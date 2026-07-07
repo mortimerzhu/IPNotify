@@ -117,8 +117,8 @@ if ($cfg.LocalEnabled -or $cfg.PublicEnabled -or $cfg.GatewayListen -or $cfg.Not
 Write-Host "==> Configure watchers" -ForegroundColor Cyan
 $localEnabled = AskYN "Enable local (LAN) IP watcher?" (BoolYN $cfg.LocalEnabled "y")
 if ($localEnabled -eq "y") { $localInterval = Ask "  local poll interval (seconds)" (Def $cfg.LocalInterval "10") }
-$publicEnabled = AskYN "Enable public (egress) IP watcher?" (BoolYN $cfg.PublicEnabled "y")
-if ($publicEnabled -eq "y") { $publicInterval = Ask "  public poll interval (seconds)" (Def $cfg.PublicInterval "60") }
+$publicEnabled = AskYN "Enable WAN (public egress) IP watcher?" (BoolYN $cfg.PublicEnabled "y")
+if ($publicEnabled -eq "y") { $publicInterval = Ask "  WAN poll interval (seconds)" (Def $cfg.PublicInterval "60") }
 if ($localEnabled -ne "y" -and $publicEnabled -ne "y") { throw "at least one watcher must be enabled" }
 
 Write-Host "==> Configure gateway" -ForegroundColor Cyan

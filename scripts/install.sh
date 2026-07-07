@@ -130,9 +130,9 @@ ask_yn "Enable local (LAN) IP watcher?" "${LOCAL_ENABLED:-${CFG_LOCAL_ENABLED:-y
 LOCAL_INTERVAL="${LOCAL_INTERVAL:-${CFG_LOCAL_INTERVAL:-10}}"
 [ "$LOCAL_ENABLED" = "y" ] && ask "  local poll interval (seconds)" "$LOCAL_INTERVAL" LOCAL_INTERVAL
 
-ask_yn "Enable public (egress) IP watcher?" "${PUBLIC_ENABLED:-${CFG_PUBLIC_ENABLED:-y}}" PUBLIC_ENABLED
+ask_yn "Enable WAN (public egress) IP watcher?" "${PUBLIC_ENABLED:-${CFG_PUBLIC_ENABLED:-y}}" PUBLIC_ENABLED
 PUBLIC_INTERVAL="${PUBLIC_INTERVAL:-${CFG_PUBLIC_INTERVAL:-60}}"
-[ "$PUBLIC_ENABLED" = "y" ] && ask "  public poll interval (seconds)" "$PUBLIC_INTERVAL" PUBLIC_INTERVAL
+[ "$PUBLIC_ENABLED" = "y" ] && ask "  WAN poll interval (seconds)" "$PUBLIC_INTERVAL" PUBLIC_INTERVAL
 
 [ "$LOCAL_ENABLED" = "y" ] || [ "$PUBLIC_ENABLED" = "y" ] || err "at least one watcher must be enabled"
 

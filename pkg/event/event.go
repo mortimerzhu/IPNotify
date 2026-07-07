@@ -26,4 +26,9 @@ type Event struct {
 	// Test marks a synthetic event produced by `ipnotify test` / the gateway
 	// /test endpoint; it is not a real IP change.
 	Test bool `json:"test,omitempty"`
+	// LocalIPs / PublicIPs carry the current local (LAN) and public (WAN)
+	// addresses for a test event, so the notification can show them on separate
+	// labelled lines. Only populated when Test is true.
+	LocalIPs  []string `json:"local_ips,omitempty"`
+	PublicIPs []string `json:"public_ips,omitempty"`
 }

@@ -51,3 +51,33 @@ func TestSnapshotAndSetNotifiers(t *testing.T) {
 		t.Error("snapshot maps should be non-nil")
 	}
 }
+
+// captureNotifier records the last event it received (for asserting payloads).
+type captureNotifier struct {
+	name string
+	last event.Event
+}
+
+func (c *captureNotifier) Name() string { return c.name }
+func (c *captureNotifier) Notify(ctx context.Context, e event.Event) error {
+	c.last = e
+	return nil
+}
+
+func TestTestAllIncludesLocalAndPublic(t *testing.T) {
+	cap := &captureNotifier{name: "cap"}
+	eng := New(nil, []notifier.Notifier{cap},
+		WithLocalIPs(func() []string { return []string{"192.168.1.102"} }),
+		WithPublicIPs(func() []string { return []string{"1.2.3.4"} }),
+	)
+	eng.TestAll(context.Background())
+	if got := cap.last.LocalIPs; len(got) != 1 || got[0] != "192.168.1.102" {
+		t.Errorf("LocalIPs = %v, want [192.168.1.102]", got)
+	}
+	if got := cap.last.PublicIPs; len(got) != 1 || got[0] != "1.2.3.4" {
+		t.Errorf("PublicIPs = %v, want [1.2.3.4]", got)
+	}
+	if !cap.last.Test {
+		t.Error("test event should be marked Test")
+	}
+}

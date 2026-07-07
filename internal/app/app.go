@@ -72,9 +72,19 @@ func Run(ctx context.Context, configPath string, log *slog.Logger) error {
 	}
 	watchers := BuildWatchers(cfg)
 	lc := localConfig(cfg)
-	engine := ipnotify.New(watchers, notifiers,
+	opts := []ipnotify.Option{
 		ipnotify.WithLogger(log),
-		ipnotify.WithLocalIPs(func() []string { return local.CurrentIPs(lc) }))
+		ipnotify.WithLocalIPs(func() []string { return local.CurrentIPs(lc) }),
+	}
+	if cfg.Watch.Public.Enabled {
+		sources := cfg.Watch.Public.Sources
+		opts = append(opts, ipnotify.WithPublicIPs(func() []string {
+			ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+			defer cancel()
+			return public.CurrentIP(ctx, sources)
+		}))
+	}
+	engine := ipnotify.New(watchers, notifiers, opts...)
 	log.Info("ipnotify starting",
 		"watchers", len(watchers), "notifiers", len(notifiers), "gateway", cfg.Gateway.Enabled)
 

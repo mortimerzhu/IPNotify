@@ -48,6 +48,17 @@ func New(cfg Config) *Watcher {
 // Name implements watcher.Watcher.
 func (w *Watcher) Name() string { return "public" }
 
+// CurrentIP resolves the public (WAN) IP once, using the given sources
+// (majority vote). Returns nil when no source responds. Used by the test
+// notification so it shows a live value instead of waiting for the first poll.
+func CurrentIP(ctx context.Context, sources []string) []string {
+	w := New(Config{Sources: sources})
+	if ip, ok := w.resolve(ctx); ok {
+		return []string{ip}
+	}
+	return nil
+}
+
 // Watch implements watcher.Watcher.
 func (w *Watcher) Watch(ctx context.Context, out chan<- event.Event) error {
 	var current string

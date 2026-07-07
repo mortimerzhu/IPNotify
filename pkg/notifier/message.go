@@ -14,7 +14,7 @@ func Title(e event.Event) string {
 	}
 	switch e.Kind {
 	case event.KindPublic:
-		return "🌍 Public IP changed"
+		return "🌍 WAN IP changed"
 	case event.KindLocal:
 		if e.Interface != "" {
 			return fmt.Sprintf("🔌 Local IP changed (%s)", e.Interface)
@@ -36,7 +36,18 @@ func FormatText(e event.Event) string {
 		fmt.Fprintf(&b, "Interface: %s\n", e.Interface)
 	}
 	if e.Test {
-		fmt.Fprintf(&b, "Current IP: %s\n", joinOrNone(e.New))
+		if len(e.LocalIPs) > 0 || len(e.PublicIPs) > 0 {
+			// Show LAN and WAN on separate labelled lines when the breakdown is
+			// available (populated by the engine's test event).
+			if len(e.LocalIPs) > 0 {
+				fmt.Fprintf(&b, "Local IP: %s\n", joinOrNone(e.LocalIPs))
+			}
+			if len(e.PublicIPs) > 0 {
+				fmt.Fprintf(&b, "WAN IP: %s\n", joinOrNone(e.PublicIPs))
+			}
+		} else {
+			fmt.Fprintf(&b, "Current IP: %s\n", joinOrNone(e.New))
+		}
 	} else {
 		fmt.Fprintf(&b, "Old: %s\n", joinOrNone(e.Old))
 		fmt.Fprintf(&b, "New: %s\n", joinOrNone(e.New))

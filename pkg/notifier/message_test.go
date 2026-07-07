@@ -44,3 +44,30 @@ func TestFormatChangeEvent(t *testing.T) {
 		t.Errorf("unexpected change message:\n%s", out)
 	}
 }
+
+func TestFormatTestEventBreakdown(t *testing.T) {
+	e := event.Event{
+		Kind:      event.KindLocal,
+		Test:      true,
+		LocalIPs:  []string{"192.168.1.102"},
+		PublicIPs: []string{"1.2.3.4"},
+		New:       []string{"192.168.1.102", "1.2.3.4"},
+		Time:      time.Unix(1700000000, 0).UTC(),
+	}
+	out := FormatText(e)
+	if !strings.Contains(out, "Local IP: 192.168.1.102") {
+		t.Errorf("missing Local IP line:\n%s", out)
+	}
+	if !strings.Contains(out, "WAN IP: 1.2.3.4") {
+		t.Errorf("missing WAN IP line:\n%s", out)
+	}
+	if strings.Contains(out, "Current IP:") {
+		t.Errorf("labelled breakdown should replace the Current IP line:\n%s", out)
+	}
+}
+
+func TestTitleWAN(t *testing.T) {
+	if got := Title(event.Event{Kind: event.KindPublic}); !strings.Contains(got, "WAN") {
+		t.Errorf("public title = %q, want it to mention WAN", got)
+	}
+}
