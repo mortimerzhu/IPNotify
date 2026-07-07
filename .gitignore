@@ -1,0 +1,29 @@
+# Compiled binaries / build output
+/ipnotify
+/bin/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries and coverage
+*.test
+*.out
+coverage.*
+
+# Local runtime config (keep configs/config.example.yaml)
+/config.yaml
+/config.yml
+config.local.yaml
+
+# Go workspace
+go.work
+go.work.sum
+
+# Editor / OS cruft
+.idea/
+.vscode/
+*.swp
+.DS_Store

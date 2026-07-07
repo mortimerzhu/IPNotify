@@ -1,0 +1,62 @@
+# IPNotify example configuration.
+# Copy to config.yaml and edit, then run: ipnotify -c config.yaml
+
+watch:
+  # Local (LAN) interface IP monitoring.
+  local:
+    enabled: true
+    interval: 10s          # poll interval; a bare number (e.g. 10) means seconds
+    # By default only PHYSICAL wired/Wi-Fi interfaces are watched: loopback,
+    # link-local, VPN tunnels, bridges, docker/veth, VM adapters, and IPv6
+    # unique-local (fd00::/7) are all excluded automatically. No need to know
+    # the interface names (en0/eth0/wlan0/"Wi-Fi" differ per OS).
+    # interfaces: [en0, en1]   # optional: watch ONLY these names (overrides auto-detect)
+    # include_virtual: false   # true = also watch VPN/bridge/docker/etc.
+    # disable_ipv6: false      # true = report IPv4 only
+    # include_ipv6_ula: false  # true = also report fd00::/7 addresses
+
+  # Public egress IP monitoring via HTTP services.
+  public:
+    enabled: true
+    interval: 60s
+    sources:               # optional; these are the defaults
+      - https://api.ipify.org
+      - https://ifconfig.me/ip
+      - https://icanhazip.com
+
+# Built-in HTTP status/control API (gateway).
+gateway:
+  enabled: true
+  listen: "127.0.0.1:8555"   # bind to loopback only by default
+  # Endpoints:
+  #   GET  /healthz   liveness probe
+  #   GET  /status    current IPs, uptime, last change / last notify status
+  #   POST /test      send a test notification to all notifiers
+  #   POST /reload    reload notifiers from this config file
+
+# One or more notifiers. Each entry has a `type` and a type-specific `config`.
+notifiers:
+  # Generic webhook: POSTs the event as JSON.
+  - type: webhook
+    config:
+      url: https://example.com/hook
+      headers:
+        Authorization: "Bearer YOUR_TOKEN"
+
+  # Telegram bot.
+  - type: telegram
+    config:
+      token: "123456:ABC-DEF..."
+      chat_id: "123456789"
+
+  # DingTalk custom robot (secret optional, enables signing).
+  - type: dingtalk
+    config:
+      webhook: https://oapi.dingtalk.com/robot/send?access_token=YOUR_TOKEN
+      secret: "SEC..."
+
+  # Feishu / Lark custom robot (secret optional, enables signing).
+  - type: feishu
+    config:
+      webhook: https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN
+      secret: "YOUR_SECRET"
