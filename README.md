@@ -78,7 +78,34 @@ Receive instant alerts when your IP changes through your preferred messaging pla
 
 ## Installation
 
-### One-line installer (recommended)
+### Quick install — prebuilt binary (recommended, no Go needed)
+
+Detects your OS/arch, downloads the matching binary from the latest
+[GitHub release](https://github.com/mortimerzhu/IPNotify/releases), verifies its
+checksum, then runs the interactive installer (which registers a **background
+service that starts on boot**).
+
+```bash
+# Linux / macOS / OpenWrt
+curl -fsSL https://raw.githubusercontent.com/mortimerzhu/IPNotify/main/install.sh | sh
+
+# Windows (run in an elevated PowerShell)
+irm https://raw.githubusercontent.com/mortimerzhu/IPNotify/main/install.ps1 | iex
+```
+
+Useful environment variables:
+
+| Variable                | Effect                                              |
+|-------------------------|-----------------------------------------------------|
+| `IPNOTIFY_VERSION`      | Install a specific release (e.g. `v0.0.1`) not the latest |
+| `IPNOTIFY_NO_INSTALL=1` | Only download + verify the binary; skip installing   |
+| `IPNOTIFY_REPO`         | Pull from a fork (`owner/name`)                     |
+
+Prebuilt targets: `linux` (amd64/arm64/armv7), `darwin` (amd64/arm64),
+`windows` (amd64/arm64). On other architectures (e.g. MIPS routers), install
+from source below.
+
+### Install from source
 
 The interactive installer builds from source, prompts you for your watchers and
 notifier credentials (webhook URLs, tokens, secrets), writes the config, and
