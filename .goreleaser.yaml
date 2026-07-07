@@ -1,0 +1,105 @@
+# GoReleaser configuration for IPNotify.
+# Docs: https://goreleaser.com
+#
+# Local dry-run (no publish, builds a snapshot into ./dist):
+#   goreleaser release --snapshot --clean
+#
+# Real release: push a semver tag, GitHub Actions does the rest:
+#   git tag v1.0.0 && git push origin v1.0.0
+version: 2
+
+project_name: ipnotify
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: ipnotify
+    main: ./cmd/ipnotify
+    binary: ipnotify
+    # Pure-Go project (no cgo), so cross-compilation is fully static.
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "7" # armv7 covers most OpenWrt routers / Raspberry Pi
+    ignore:
+      # arm (32-bit) is only meaningful on linux here.
+      - goos: darwin
+        goarch: arm
+      - goos: windows
+        goarch: arm
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: ipnotify
+    ids:
+      - ipnotify
+    # e.g. ipnotify_1.0.0_linux_arm64.tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+      - configs/config.example.yaml
+      - scripts/*
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "Merge pull request"
+      - "Merge branch"
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Others
+      order: 999
+
+release:
+  draft: false
+  prerelease: auto # tags like v1.0.0-rc1 are marked as pre-releases
+  footer: |
+    ---
+    ## Install
+
+    Download the archive for your OS/arch, extract it, then run the bundled
+    installer (it registers a background service that starts on boot):
+
+    ```sh
+    IPNOTIFY_BINARY=./ipnotify ./scripts/install.sh      # Linux / macOS / OpenWrt
+    ```
+
+    On Windows, run `scripts\install.ps1` from an elevated PowerShell.
