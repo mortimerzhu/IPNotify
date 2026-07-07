@@ -145,3 +145,33 @@ notifiers:
 		})
 	}
 }
+
+func TestSourcesForRegion(t *testing.T) {
+	cn := sourcesForRegion("cn")
+	if len(cn) == 0 || cn[0] != "https://myip.ipip.net" {
+		t.Errorf("cn region should use the China list, got %v", cn)
+	}
+	g := sourcesForRegion("global")
+	if len(g) == 0 || g[0] != "https://api.ipify.org" {
+		t.Errorf("global region should use the international list, got %v", g)
+	}
+}
+
+func TestPublicRegionAppliedAsDefault(t *testing.T) {
+	c := &Config{}
+	c.Watch.Public.Enabled = true
+	c.Watch.Public.Region = "cn"
+	c.applyDefaults()
+	if len(c.Watch.Public.Sources) == 0 || c.Watch.Public.Sources[0] != "https://myip.ipip.net" {
+		t.Errorf("region=cn should seed China sources, got %v", c.Watch.Public.Sources)
+	}
+	// An explicit Sources list must win over region.
+	c2 := &Config{}
+	c2.Watch.Public.Enabled = true
+	c2.Watch.Public.Region = "cn"
+	c2.Watch.Public.Sources = []string{"https://example.com/ip"}
+	c2.applyDefaults()
+	if len(c2.Watch.Public.Sources) != 1 || c2.Watch.Public.Sources[0] != "https://example.com/ip" {
+		t.Errorf("explicit sources should override region, got %v", c2.Watch.Public.Sources)
+	}
+}

@@ -89,7 +89,7 @@ fi
 # installer emits (env-var presets or a hand-edited config still override it).
 read_existing_config() {
   CFG_LOCAL_ENABLED=""; CFG_LOCAL_INTERVAL=""; CFG_PUBLIC_ENABLED=""; CFG_PUBLIC_INTERVAL=""
-  CFG_GATEWAY_ENABLED=""; CFG_GATEWAY_LISTEN=""; CFG_NOTIFIERS=""; CFG_NOTIFIER_COUNT=0
+  CFG_PUBLIC_REGION=""; CFG_GATEWAY_ENABLED=""; CFG_GATEWAY_LISTEN=""; CFG_NOTIFIERS=""; CFG_NOTIFIER_COUNT=0
   [ -f "$CONFIG_PATH" ] || return 0
 
   # Scalar watcher/gateway settings. `top`/`sub2` track the section so the two
@@ -109,6 +109,7 @@ read_existing_config() {
     top=="watch" && /^[ \t]+interval:/ { v=val($0)
       if (sub2=="local")  print "CFG_LOCAL_INTERVAL=\"" v "\""
       if (sub2=="public") print "CFG_PUBLIC_INTERVAL=\"" v "\""; next }
+    top=="watch" && sub2=="public" && /^[ \t]+region:/ { print "CFG_PUBLIC_REGION=\"" val($0) "\""; next }
     top=="gateway" && /^[ \t]+enabled:/ { v=(val($0)=="true")?"y":"n"; print "CFG_GATEWAY_ENABLED=\"" v "\""; next }
     top=="gateway" && /^[ \t]+listen:/  { print "CFG_GATEWAY_LISTEN=\"" val($0) "\""; next }
   ' "$CONFIG_PATH")"
@@ -132,7 +133,14 @@ LOCAL_INTERVAL="${LOCAL_INTERVAL:-${CFG_LOCAL_INTERVAL:-10}}"
 
 ask_yn "Enable WAN (public egress) IP watcher?" "${PUBLIC_ENABLED:-${CFG_PUBLIC_ENABLED:-y}}" PUBLIC_ENABLED
 PUBLIC_INTERVAL="${PUBLIC_INTERVAL:-${CFG_PUBLIC_INTERVAL:-60}}"
-[ "$PUBLIC_ENABLED" = "y" ] && ask "  WAN poll interval (seconds)" "$PUBLIC_INTERVAL" PUBLIC_INTERVAL
+PUBLIC_REGION="${PUBLIC_REGION:-${CFG_PUBLIC_REGION:-auto}}"
+if [ "$PUBLIC_ENABLED" = "y" ]; then
+  ask "  WAN poll interval (seconds)" "$PUBLIC_INTERVAL" PUBLIC_INTERVAL
+  # Region picks the default IP-echo source list. On OpenWrt behind a
+  # transparent proxy (e.g. OpenClash) that direct-routes China, "cn" uses
+  # domestic services so the real broadband egress IP is returned.
+  ask "  WAN IP source region (auto/cn/global)" "$PUBLIC_REGION" PUBLIC_REGION
+fi
 
 [ "$LOCAL_ENABLED" = "y" ] || [ "$PUBLIC_ENABLED" = "y" ] || err "at least one watcher must be enabled"
 
@@ -216,6 +224,7 @@ $SVC mkdir -p "$CONFIG_DIR"
   [ "$LOCAL_ENABLED" = "y" ] && printf '    interval: %s\n' "$LOCAL_INTERVAL"
   printf '  public:\n    enabled: %s\n' "$(yesbool "$PUBLIC_ENABLED")"
   [ "$PUBLIC_ENABLED" = "y" ] && printf '    interval: %s\n' "$PUBLIC_INTERVAL"
+  [ "$PUBLIC_ENABLED" = "y" ] && [ -n "$PUBLIC_REGION" ] && printf '    region: %s\n' "$PUBLIC_REGION"
   printf 'gateway:\n  enabled: %s\n' "$(yesbool "$GATEWAY_ENABLED")"
   [ "$GATEWAY_ENABLED" = "y" ] && printf '  listen: "%s"\n' "$GATEWAY_LISTEN"
   printf 'notifiers:%s\n' "$NOTIFIERS"

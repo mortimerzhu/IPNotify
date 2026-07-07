@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -92,7 +93,16 @@ type LocalWatchConfig struct {
 type PublicWatchConfig struct {
 	Enabled  bool     `yaml:"enabled"`
 	Interval Duration `yaml:"interval"`
-	// Sources are HTTP endpoints that return the caller's public IP as plain text.
+	// Region selects the default source list when Sources is empty:
+	//   "cn"     - mainland-China echo services (reachable directly even when a
+	//              transparent proxy like OpenClash proxies foreign traffic)
+	//   "global" - international echo services (ipify/ifconfig.me/icanhazip)
+	//   "auto"/"" - pick by system timezone (China zone -> cn, else global)
+	// An explicit Sources list always overrides this.
+	Region string `yaml:"region"`
+	// Sources are HTTP endpoints that echo the caller's public IP. The IP is
+	// extracted from the response body by regex, so services that wrap it in
+	// text/HTML (e.g. myip.ipip.net) work too.
 	Sources []string `yaml:"sources"`
 }
 
@@ -111,12 +121,63 @@ const (
 	defaultGatewayListen  = "127.0.0.1:8555"
 )
 
-// defaultPublicSources are used when the public watcher is enabled with no
-// sources configured.
-var defaultPublicSources = []string{
+// globalPublicSources are international echo services, used when region is
+// "global" (or auto-detected as non-China) and no explicit sources are set.
+var globalPublicSources = []string{
 	"https://api.ipify.org",
 	"https://ifconfig.me/ip",
 	"https://icanhazip.com",
+}
+
+// chinaPublicSources are mainland-China echo services. They resolve to the real
+// broadband egress IP even when a transparent proxy (e.g. OpenClash) proxies
+// foreign traffic but direct-routes Chinese destinations. Several wrap the IP in
+// text/HTML, so the watcher extracts it by regex.
+var chinaPublicSources = []string{
+	"https://myip.ipip.net",
+	"https://ddns.oray.com/checkip",
+	"https://ip.3322.net",
+	"https://4.ipw.cn",
+	"https://v4.yinghualuo.cn/bejson",
+}
+
+// sourcesForRegion returns the default source list for a region ("cn"/"global",
+// or "auto"/"" to pick by system timezone).
+func sourcesForRegion(region string) []string {
+	switch strings.ToLower(strings.TrimSpace(region)) {
+	case "cn", "china":
+		return append([]string(nil), chinaPublicSources...)
+	case "global", "intl", "international":
+		return append([]string(nil), globalPublicSources...)
+	default: // "auto" / ""
+		if detectChinaTimezone() {
+			return append([]string(nil), chinaPublicSources...)
+		}
+		return append([]string(nil), globalPublicSources...)
+	}
+}
+
+// detectChinaTimezone reports whether the system timezone looks like mainland
+// China. Best-effort and offline: checks $TZ, /etc/timezone, and the current
+// zone abbreviation/offset (CST +08:00).
+func detectChinaTimezone() bool {
+	tz := os.Getenv("TZ")
+	if tz == "" {
+		if b, err := os.ReadFile("/etc/timezone"); err == nil {
+			tz = string(b)
+		}
+	}
+	tz = strings.ToLower(strings.TrimSpace(tz))
+	for _, z := range []string{"shanghai", "chongqing", "urumqi", "harbin", "asia/beijing", "prc"} {
+		if strings.Contains(tz, z) {
+			return true
+		}
+	}
+	// CST at +08:00 is China Standard Time (US "CST" is -06:00).
+	if name, off := time.Now().Zone(); strings.EqualFold(name, "CST") && off == 8*3600 {
+		return true
+	}
+	return false
 }
 
 // DefaultConfigPath returns the conventional config file location for the
@@ -165,7 +226,7 @@ func (c *Config) applyDefaults() {
 			c.Watch.Public.Interval = Duration(defaultPublicInterval)
 		}
 		if len(c.Watch.Public.Sources) == 0 {
-			c.Watch.Public.Sources = append([]string(nil), defaultPublicSources...)
+			c.Watch.Public.Sources = sourcesForRegion(c.Watch.Public.Region)
 		}
 	}
 	if c.Gateway.Enabled && c.Gateway.Listen == "" {

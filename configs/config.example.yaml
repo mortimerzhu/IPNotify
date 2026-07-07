@@ -19,10 +19,20 @@ watch:
   public:
     enabled: true
     interval: 60s
-    sources:               # optional; these are the defaults
-      - https://api.ipify.org
-      - https://ifconfig.me/ip
-      - https://icanhazip.com
+    # region picks the default source list when `sources` is empty:
+    #   auto   - by system timezone (China zone -> cn, otherwise global) [default]
+    #   cn     - mainland-China echo services; use this on OpenWrt behind a
+    #            transparent proxy (e.g. OpenClash) that direct-routes China, so
+    #            the REAL broadband egress IP is returned instead of the proxy's
+    #   global - international echo services (ipify / ifconfig.me / icanhazip)
+    region: auto
+    # sources overrides `region` entirely. The IP is extracted from each
+    # response by regex, so services that wrap it in text/HTML work too.
+    # sources:
+    #   - https://myip.ipip.net        # cn examples
+    #   - https://ip.3322.net
+    #   - https://api.ipify.org        # global examples
+    #   - https://icanhazip.com
 
 # Built-in HTTP status/control API (gateway).
 gateway:

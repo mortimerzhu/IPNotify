@@ -10,7 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strings"
+	"regexp"
 	"time"
 
 	"github.com/mortimerzhu/IPNotify/pkg/event"
@@ -126,16 +126,21 @@ func (w *Watcher) fetch(ctx context.Context, url string) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 128))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 65536))
 	if err != nil {
 		return "", err
 	}
-	ip := strings.TrimSpace(string(body))
-	if net.ParseIP(ip) == nil {
-		return "", &net.ParseError{Type: "IP address", Text: ip}
+	// Extract the IP by regex rather than parsing the whole body: several echo
+	// services (e.g. myip.ipip.net, ddns.oray.com) wrap the address in text.
+	ip := ipv4Regex.FindString(string(body))
+	if ip == "" || net.ParseIP(ip) == nil {
+		return "", &net.ParseError{Type: "IPv4 address", Text: string(body)}
 	}
 	return ip, nil
 }
+
+// ipv4Regex matches a dotted-quad IPv4 address anywhere in a response body.
+var ipv4Regex = regexp.MustCompile(`\b((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b`)
 
 func nonEmpty(s string) []string {
 	if s == "" {

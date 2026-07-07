@@ -30,7 +30,7 @@ function Def($v, $fallback) {
 function Read-ExistingConfig($path) {
   $r = @{
     LocalEnabled=$null; LocalInterval=$null; PublicEnabled=$null; PublicInterval=$null
-    GatewayEnabled=$null; GatewayListen=$null; Notifiers=$null; NotifierCount=0
+    PublicRegion=$null; GatewayEnabled=$null; GatewayListen=$null; Notifiers=$null; NotifierCount=0
   }
   if (-not (Test-Path $path)) { return $r }
 
@@ -60,6 +60,7 @@ function Read-ExistingConfig($path) {
       if ($indent -ge 4 -and $t -match '^interval:\s*(\S+)') {
         if ($sub -eq "local") { $r.LocalInterval = $matches[1] } elseif ($sub -eq "public") { $r.PublicInterval = $matches[1] }
       }
+      if ($indent -ge 4 -and $sub -eq "public" -and $t -match '^region:\s*(\S+)') { $r.PublicRegion = $matches[1] }
     } elseif ($top -eq "gateway") {
       if ($t -match '^enabled:\s*(\S+)') { $r.GatewayEnabled = $matches[1] }
       if ($t -match '^listen:\s*(\S+)')  { $r.GatewayListen  = $matches[1] }
@@ -118,7 +119,12 @@ Write-Host "==> Configure watchers" -ForegroundColor Cyan
 $localEnabled = AskYN "Enable local (LAN) IP watcher?" (BoolYN $cfg.LocalEnabled "y")
 if ($localEnabled -eq "y") { $localInterval = Ask "  local poll interval (seconds)" (Def $cfg.LocalInterval "10") }
 $publicEnabled = AskYN "Enable WAN (public egress) IP watcher?" (BoolYN $cfg.PublicEnabled "y")
-if ($publicEnabled -eq "y") { $publicInterval = Ask "  WAN poll interval (seconds)" (Def $cfg.PublicInterval "60") }
+if ($publicEnabled -eq "y") {
+  $publicInterval = Ask "  WAN poll interval (seconds)" (Def $cfg.PublicInterval "60")
+  # Region picks the default IP-echo source list; "cn" uses domestic services
+  # so a transparent proxy that direct-routes China still yields the real IP.
+  $publicRegion = Ask "  WAN IP source region (auto/cn/global)" (Def $cfg.PublicRegion "auto")
+}
 if ($localEnabled -ne "y" -and $publicEnabled -ne "y") { throw "at least one watcher must be enabled" }
 
 Write-Host "==> Configure gateway" -ForegroundColor Cyan
@@ -170,6 +176,7 @@ $lines = @("watch:", "  local:", "    enabled: $(YesBool $localEnabled)")
 if ($localEnabled -eq "y") { $lines += "    interval: $localInterval" }
 $lines += @("  public:", "    enabled: $(YesBool $publicEnabled)")
 if ($publicEnabled -eq "y") { $lines += "    interval: $publicInterval" }
+if ($publicEnabled -eq "y" -and $publicRegion) { $lines += "    region: $publicRegion" }
 $lines += @("gateway:", "  enabled: $(YesBool $gatewayEnabled)")
 if ($gatewayEnabled -eq "y") { $lines += "  listen: `"$gatewayListen`"" }
 $lines += "notifiers:$notifiers"
