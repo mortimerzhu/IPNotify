@@ -28,7 +28,22 @@ Write-Host "==> Detected platform: windows/$arch" -ForegroundColor Cyan
 if ($env:IPNOTIFY_VERSION) {
   $tag = $env:IPNOTIFY_VERSION
 } else {
-  $tag = (Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest").tag_name
+  # Resolve "latest" via the github.com /releases/latest redirect
+  # (302 -> /releases/tag/vX.Y.Z). Unlike api.github.com this is NOT subject to
+  # the unauthenticated 60-requests/hour rate limit.
+  try {
+    $req = [System.Net.HttpWebRequest]::Create("https://github.com/$Repo/releases/latest")
+    $req.AllowAutoRedirect = $false
+    $req.UserAgent = "ipnotify-installer"
+    $resp = $req.GetResponse()
+    $loc = $resp.Headers["Location"]
+    $resp.Close()
+    if ($loc) { $tag = ($loc -split "/")[-1] }
+  } catch { $tag = $null }
+  # Fallback to the API (may hit the rate limit) if the redirect yielded nothing.
+  if (-not $tag) {
+    $tag = (Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest").tag_name
+  }
 }
 if (-not $tag) { throw "could not determine the release tag" }
 $ver = $tag.TrimStart("v")   # asset filenames drop the leading "v"
