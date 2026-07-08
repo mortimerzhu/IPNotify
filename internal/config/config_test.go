@@ -157,6 +157,16 @@ func TestSourcesForRegion(t *testing.T) {
 	}
 }
 
+func TestDetectChinaTimezone(t *testing.T) {
+	// $TZ is the one input we can set deterministically; the negative case is
+	// machine-dependent (it falls through to /etc/localtime etc.), so we only
+	// assert the positive match here.
+	t.Setenv("TZ", "Asia/Shanghai")
+	if !detectChinaTimezone() {
+		t.Error("Asia/Shanghai in $TZ should detect as China")
+	}
+}
+
 func TestPublicRegionAppliedAsDefault(t *testing.T) {
 	c := &Config{}
 	c.Watch.Public.Enabled = true

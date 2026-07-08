@@ -158,22 +158,55 @@ func sourcesForRegion(region string) []string {
 }
 
 // detectChinaTimezone reports whether the system timezone looks like mainland
-// China. Best-effort and offline: checks $TZ, /etc/timezone, and the current
-// zone abbreviation/offset (CST +08:00).
+// China. Best-effort and offline. Platforms disagree on where the zone lives,
+// so it probes every location in turn — macOS and OpenWrt use none of the
+// $TZ // /etc/timezone pair the naive check relied on:
+//   - $TZ                        explicit override (any OS)
+//   - /etc/timezone              Debian/Ubuntu style IANA name
+//   - /etc/localtime (symlink)   macOS + most Linux -> .../zoneinfo/Asia/Shanghai
+//   - /etc/TZ                    OpenWrt/busybox POSIX string, e.g. "CST-8"
+//   - /etc/config/system         OpenWrt UCI: option zonename 'Asia/Shanghai'
+//   - runtime zone abbrev/offset CST +08:00 (distinct from US CST -06:00)
 func detectChinaTimezone() bool {
-	tz := os.Getenv("TZ")
-	if tz == "" {
-		if b, err := os.ReadFile("/etc/timezone"); err == nil {
-			tz = string(b)
+	// Markers that only appear in mainland-China IANA zone names / paths.
+	chinaMarkers := []string{"shanghai", "chongqing", "urumqi", "harbin", "beijing", "prc"}
+	containsMarker := func(s string) bool {
+		s = strings.ToLower(s)
+		for _, m := range chinaMarkers {
+			if strings.Contains(s, m) {
+				return true
+			}
 		}
+		return false
 	}
-	tz = strings.ToLower(strings.TrimSpace(tz))
-	for _, z := range []string{"shanghai", "chongqing", "urumqi", "harbin", "asia/beijing", "prc"} {
-		if strings.Contains(tz, z) {
+
+	// $TZ and /etc/timezone hold an IANA name directly.
+	if containsMarker(os.Getenv("TZ")) {
+		return true
+	}
+	if b, err := os.ReadFile("/etc/timezone"); err == nil && containsMarker(string(b)) {
+		return true
+	}
+	// /etc/localtime is a symlink into the zoneinfo tree on macOS and most
+	// Linux distros; the target path carries the IANA name.
+	if target, err := os.Readlink("/etc/localtime"); err == nil && containsMarker(target) {
+		return true
+	}
+	// OpenWrt (and other busybox systems) often skip zoneinfo to save space,
+	// writing a POSIX TZ string here instead — "CST-8" for China (the POSIX
+	// sign is inverted; US CST is "CST6CDT", so no false positive).
+	if b, err := os.ReadFile("/etc/TZ"); err == nil {
+		s := strings.ToUpper(strings.TrimSpace(string(b)))
+		if strings.HasPrefix(s, "CST-8") || containsMarker(s) {
 			return true
 		}
 	}
-	// CST at +08:00 is China Standard Time (US "CST" is -06:00).
+	// OpenWrt UCI stores the IANA name as `option zonename 'Asia/Shanghai'`.
+	if b, err := os.ReadFile("/etc/config/system"); err == nil && containsMarker(string(b)) {
+		return true
+	}
+	// Last resort: the resolved runtime zone. CST at +08:00 is China Standard
+	// Time (US "CST" is -06:00). Only works when zoneinfo is available.
 	if name, off := time.Now().Zone(); strings.EqualFold(name, "CST") && off == 8*3600 {
 		return true
 	}
