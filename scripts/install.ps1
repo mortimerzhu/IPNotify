@@ -94,6 +94,40 @@ $RepoRoot = Split-Path -Parent $ScriptDir
 
 Write-Host "==> Target: $BinPath  config: $ConfigPath" -ForegroundColor Cyan
 
+# --- stop any running instance so we can overwrite the binary ---
+# On a re-install/upgrade the running service holds an exclusive lock on
+# ipnotify.exe, so copying over it fails with "being used by another process".
+# Stop the service (best effort) and wait for the file to be released before we
+# write the new binary; the later service stop/uninstall/install block re-does
+# the SCM work once the new binary is in place.
+function Stop-RunningIPNotify {
+  $svc = Get-Service -Name "ipnotify" -ErrorAction SilentlyContinue
+  if ($svc -and $svc.Status -ne "Stopped") {
+    Write-Host "==> Stopping running IPNotify service before upgrade" -ForegroundColor Cyan
+    try { Stop-Service -Name "ipnotify" -Force -ErrorAction Stop } catch { }
+    try { $svc.WaitForStatus("Stopped", (New-TimeSpan -Seconds 15)) } catch { }
+  }
+  # Kill any lingering process still holding the binary (foreground run, or a
+  # slow SCM stop that returned before the process exited).
+  Get-Process -Name "ipnotify" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+}
+
+# Wait until $path can be opened for exclusive write (i.e. no process holds it).
+function Wait-FileUnlocked($path, $timeoutSec = 15) {
+  if (-not (Test-Path $path)) { return }
+  $deadline = (Get-Date).AddSeconds($timeoutSec)
+  while ((Get-Date) -lt $deadline) {
+    try {
+      $fs = [System.IO.File]::Open($path, 'Open', 'ReadWrite', 'None')
+      $fs.Close(); return
+    } catch { Start-Sleep -Milliseconds 300 }
+  }
+  Write-Host "==> Warning: $path still appears locked; the copy may fail" -ForegroundColor Yellow
+}
+
+Stop-RunningIPNotify
+Wait-FileUnlocked $BinPath
+
 # --- obtain binary ---
 New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
 if ($env:IPNOTIFY_BINARY) {
