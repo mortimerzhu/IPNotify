@@ -14,9 +14,20 @@ import (
 
 // Config is the top-level configuration.
 type Config struct {
-	Watch     WatchConfig      `yaml:"watch"`
-	Gateway   GatewayConfig    `yaml:"gateway"`
-	Notifiers []NotifierConfig `yaml:"notifiers"`
+	Watch WatchConfig `yaml:"watch"`
+	// NotifyOnStart controls whether a one-shot notification with the current
+	// IPs is sent when the service starts (so a reboot still notifies even when
+	// the IP did not change). A pointer so an absent key defaults to true; set
+	// `notify_on_start: false` to opt out.
+	NotifyOnStart *bool            `yaml:"notify_on_start"`
+	Gateway       GatewayConfig    `yaml:"gateway"`
+	Notifiers     []NotifierConfig `yaml:"notifiers"`
+}
+
+// NotifyOnStartEnabled reports the effective notify-on-start setting (default
+// true when unset).
+func (c *Config) NotifyOnStartEnabled() bool {
+	return c.NotifyOnStart == nil || *c.NotifyOnStart
 }
 
 // GatewayConfig configures the built-in HTTP status/control server.

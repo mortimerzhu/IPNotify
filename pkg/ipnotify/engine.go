@@ -226,6 +226,40 @@ func (e *Engine) TestAll(ctx context.Context) []TestResult {
 	return results
 }
 
+// AnnounceStartup sends a one-shot notification with the current local/public
+// IPs when the service starts. Watchers only report an IP *change*, so after a
+// reboot a subscriber would otherwise never learn the current address unless it
+// happened to change again. This reuses the same live IP providers as the test
+// notification and dispatches through the normal delivery path. It is
+// independent of the watcher dedup state, so it never causes a duplicate when a
+// real change follows. No-op when neither provider yields an address.
+func (e *Engine) AnnounceStartup(ctx context.Context) {
+	var localIPs, publicIPs []string
+	if e.localIPsFn != nil {
+		localIPs = e.localIPsFn()
+	}
+	if e.publicIPsFn != nil {
+		publicIPs = e.publicIPsFn()
+	}
+	if len(localIPs) == 0 && len(publicIPs) == 0 {
+		e.log.Warn("startup announce skipped: no IPs resolved")
+		return
+	}
+	host, _ := os.Hostname()
+	combined := append(append([]string(nil), localIPs...), publicIPs...)
+	ev := event.Event{
+		Kind:      event.KindLocal,
+		Startup:   true,
+		New:       combined,
+		LocalIPs:  localIPs,
+		PublicIPs: publicIPs,
+		Hostname:  host,
+		Time:      time.Now(),
+	}
+	e.log.Info("announcing startup IPs", "local", localIPs, "public", publicIPs)
+	e.dispatch(ctx, ev)
+}
+
 func (e *Engine) recordChange(ev event.Event) {
 	e.mu.Lock()
 	defer e.mu.Unlock()

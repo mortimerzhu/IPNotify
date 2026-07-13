@@ -34,6 +34,11 @@ watch:
     #   - https://api.ipify.org        # global examples
     #   - https://icanhazip.com
 
+# Announce the current local/public IPs once when the service starts. Watchers
+# otherwise only report a *change*, so after a reboot with an unchanged IP you'd
+# get no message. Defaults to true; set to false to opt out.
+notify_on_start: true
+
 # Built-in HTTP status/control API (gateway).
 gateway:
   enabled: true

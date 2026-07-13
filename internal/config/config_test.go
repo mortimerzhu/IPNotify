@@ -42,6 +42,29 @@ notifiers:
 	if len(c.Watch.Public.Sources) == 0 {
 		t.Error("expected default public sources")
 	}
+	if !c.NotifyOnStartEnabled() {
+		t.Error("notify_on_start should default to true when unset")
+	}
+}
+
+func TestNotifyOnStartDisabled(t *testing.T) {
+	path := writeTemp(t, `
+watch:
+  local:
+    enabled: true
+notify_on_start: false
+notifiers:
+  - type: webhook
+    config:
+      url: https://example.com
+`)
+	c, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.NotifyOnStartEnabled() {
+		t.Error("notify_on_start: false should disable startup announce")
+	}
 }
 
 func TestIntervalParsing(t *testing.T) {

@@ -235,6 +235,10 @@ watch:
     interval: 60s
     # sources: [...]         # optional; sensible defaults are used
 
+notify_on_start: true        # announce current IPs once at startup (default true).
+                             # set false to skip; watchers otherwise only report
+                             # a *change*, so a reboot with the same IP is silent.
+
 gateway:                     # built-in HTTP status/control API
   enabled: true
   listen: "127.0.0.1:8555"

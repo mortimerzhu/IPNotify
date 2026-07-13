@@ -12,6 +12,9 @@ func Title(e event.Event) string {
 	if e.Test {
 		return "🔔 IPNotify test notification"
 	}
+	if e.Startup {
+		return "🚀 IPNotify started"
+	}
 	switch e.Kind {
 	case event.KindPublic:
 		return "🌍 WAN IP changed"
@@ -35,10 +38,10 @@ func FormatText(e event.Event) string {
 	if e.Interface != "" {
 		fmt.Fprintf(&b, "Interface: %s\n", e.Interface)
 	}
-	if e.Test {
+	if e.Test || e.Startup {
 		if len(e.LocalIPs) > 0 || len(e.PublicIPs) > 0 {
 			// Show LAN and WAN on separate labelled lines when the breakdown is
-			// available (populated by the engine's test event).
+			// available (populated by the engine's test/startup event).
 			if len(e.LocalIPs) > 0 {
 				fmt.Fprintf(&b, "Local IP: %s\n", joinOrNone(e.LocalIPs))
 			}

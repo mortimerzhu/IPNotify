@@ -83,6 +83,17 @@ func Run(ctx context.Context, configPath string, log *slog.Logger) error {
 		_ = engine.Run(ctx)
 	}()
 
+	// Announce the current IPs once at startup so a reboot notifies even when
+	// the IP did not change. Runs in its own goroutine because the public-IP
+	// provider does a live (blocking) lookup.
+	if cfg.NotifyOnStartEnabled() {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			engine.AnnounceStartup(ctx)
+		}()
+	}
+
 	if cfg.Gateway.Enabled {
 		reload := func() error {
 			ncfg, err := config.Load(configPath)
@@ -197,7 +208,10 @@ func ServiceConfig(configPath string) *service.Config {
 	// (systemd/procd) and Windows (SCM) use a system service. All commands build
 	// the config the same way, so install/start/status/uninstall stay consistent.
 	if runtime.GOOS == "darwin" {
-		c.Option = service.KeyValue{"UserService": true}
+		// RunAtLoad launches the agent as soon as it's loaded at login/boot
+		// instead of relying solely on KeepAlive to resurrect it, so IP changes
+		// that happen during a reboot are caught by the startup announce.
+		c.Option = service.KeyValue{"UserService": true, "RunAtLoad": true}
 	}
 	return c
 }

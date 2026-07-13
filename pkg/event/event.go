@@ -26,9 +26,14 @@ type Event struct {
 	// Test marks a synthetic event produced by `ipnotify test` / the gateway
 	// /test endpoint; it is not a real IP change.
 	Test bool `json:"test,omitempty"`
+	// Startup marks the one-shot announcement sent when the service starts, so
+	// subscribers learn the current IP after a reboot even when it did not
+	// change. Like Test it is not a real change; it carries the current IPs in
+	// LocalIPs/PublicIPs.
+	Startup bool `json:"startup,omitempty"`
 	// LocalIPs / PublicIPs carry the current local (LAN) and public (WAN)
-	// addresses for a test event, so the notification can show them on separate
-	// labelled lines. Only populated when Test is true.
+	// addresses for a test or startup event, so the notification can show them
+	// on separate labelled lines. Only populated when Test or Startup is true.
 	LocalIPs  []string `json:"local_ips,omitempty"`
 	PublicIPs []string `json:"public_ips,omitempty"`
 }

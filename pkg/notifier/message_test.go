@@ -66,6 +66,28 @@ func TestFormatTestEventBreakdown(t *testing.T) {
 	}
 }
 
+func TestFormatStartupEvent(t *testing.T) {
+	e := event.Event{
+		Kind:      event.KindLocal,
+		Startup:   true,
+		LocalIPs:  []string{"192.168.1.50"},
+		PublicIPs: []string{"1.2.3.4"},
+		New:       []string{"192.168.1.50", "1.2.3.4"},
+		Hostname:  "mymac",
+		Time:      time.Unix(1700000000, 0).UTC(),
+	}
+	out := FormatText(e)
+	if !strings.Contains(out, "IPNotify started") {
+		t.Errorf("startup event should be labelled as started:\n%s", out)
+	}
+	if !strings.Contains(out, "Local IP: 192.168.1.50") || !strings.Contains(out, "WAN IP: 1.2.3.4") {
+		t.Errorf("startup event should list current LAN/WAN IPs on labelled lines:\n%s", out)
+	}
+	if strings.Contains(out, "Old:") {
+		t.Errorf("startup event should not show Old/New:\n%s", out)
+	}
+}
+
 func TestTitleWAN(t *testing.T) {
 	if got := Title(event.Event{Kind: event.KindPublic}); !strings.Contains(got, "WAN") {
 		t.Errorf("public title = %q, want it to mention WAN", got)
